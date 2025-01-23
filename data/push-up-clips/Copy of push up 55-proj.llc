@@ -1,0 +1,10 @@
+{
+  version: 1,
+  mediaFileName: 'Copy of push up 55.mp4',
+  cutSegments: [
+    {
+      end: 3.0101378579003177,
+      name: '',
+    },
+  ],
+}

@@ -1,0 +1,11 @@
+{
+  version: 1,
+  mediaFileName: 'Pushup_2.mp4',
+  cutSegments: [
+    {
+      start: 0,
+      end: 7.7077,
+      name: '',
+    },
+  ],
+}
