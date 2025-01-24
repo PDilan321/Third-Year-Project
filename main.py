@@ -339,6 +339,14 @@ df = pd.read_csv(csv_file)
 state_counts = df['state'].value_counts()
 print(state_counts)
 
+# Extract the camera side (front, left, right) from video_id
+df['camera_side'] = df['video_id'].str.extract(r'(front_facing|left_facing|right_facing)')
+
+# Group by camera_side and state, then count occurrences
+state_counts_per_camera = df.groupby(['camera_side', 'state']).size().unstack(fill_value=0)
+
+print(state_counts_per_camera)
+
 angle_columns = [
     'left_elbow_angle', 'right_elbow_angle', 'left_shoulder_angle', 
     'right_shoulder_angle', 'hip_spine_angle', 'left_knee_angle', 
@@ -403,7 +411,7 @@ model = Sequential([
 ])
 
 # model = Sequential([
-#     LSTM(128, return_sequences=True, input_shape=(1, len(angle_columns + distance_columns))),
+#     LSTM(128, return_sequences=True, input_shape=(1, len(angle_columns + distance_columns + landmark_columns_3d))),
 #     Dropout(rate=0.1),
 #     LSTM(64, return_sequences=False),
 #     Dense(32, activation='relu', kernel_regularizer=l2(0.001)),  # Reduced regularization
@@ -417,7 +425,7 @@ model = Sequential([
 # optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.0001) # 0.81
 # optimizer = tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9) # 0.8
 # optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) # 0.83
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) # 0.86
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) # 0.88
 
 # Compile the model
 model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy', metrics=['accuracy'])
