@@ -17,6 +17,13 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 
+import os
+from tensorflow.keras.models import load_model
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+import pushup_helper_methods as ph
+
+
 angle_columns = [
     'left_elbow_angle', 'right_elbow_angle', 'left_shoulder_angle', 
     'right_shoulder_angle', 'hip_spine_angle', 'left_knee_angle', 
@@ -321,50 +328,13 @@ def compress_states(states):
     return compressed_states
 
 
-# def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2],  window_size=5):
-#     """
-#     Count repetitions based on robust state transition tracking with compression and overlapping matching.
-
-#     Args:
-#     states (list): List of detected states in the video (e.g., [2, 1, 0, ...]).
-#     ideal_sequence (list): The state sequence that defines one rep.
-
-#     Returns:
-#     int: Number of repetitions.
-#     """
-#     rep_count = 0
-#     seq_len = len(ideal_sequence)
-
-#     print(f"Predicted States: {states}")
-
-#     smoothed_states = smooth_states(states, window_size=window_size)
-#     print(f"Smoothed States: {smoothed_states}")
-
-#     # Step 1: Compress consecutive duplicates
-#     compressed_states = compress_states(smoothed_states)
-#     print(f"Compressed States: {compressed_states}")
-
-#     # Step 2: Sliding window with overlapping sequence detection
-#     i = 0
-#     while i <= len(compressed_states) - seq_len:
-#         # Check if the current window matches the ideal sequence
-#         if compressed_states[i:i + seq_len] == ideal_sequence:
-#             rep_count += 1
-#             # Move only one step forward to allow overlap detection
-#             i += 1
-#         else:
-#             i += 1
-
-#     return rep_count
-def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2], window_size=5, tolerance=1):
+def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2],  window_size=5):
     """
-    Count repetitions based on robust state transition tracking with compression 
-    and flexible matching.
+    Count repetitions based on robust state transition tracking with compression and overlapping matching.
 
     Args:
     states (list): List of detected states in the video (e.g., [2, 1, 0, ...]).
     ideal_sequence (list): The state sequence that defines one rep.
-    tolerance (int): Number of deviations allowed from the ideal sequence.
 
     Returns:
     int: Number of repetitions.
@@ -374,29 +344,26 @@ def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2], window_size=5, tol
 
     print(f"Predicted States: {states}")
 
-    # Step 1: Smooth and compress states
     smoothed_states = smooth_states(states, window_size=window_size)
     print(f"Smoothed States: {smoothed_states}")
+
+    # Step 1: Compress consecutive duplicates
     compressed_states = compress_states(smoothed_states)
     print(f"Compressed States: {compressed_states}")
 
-    # Step 2: Sliding window with flexible sequence matching
+    # Step 2: Sliding window with overlapping sequence detection
     i = 0
     while i <= len(compressed_states) - seq_len:
-        # Count deviations from the ideal sequence
-        current_window = compressed_states[i:i + seq_len]
-        deviations = sum(1 for a, b in zip(current_window, ideal_sequence) if a != b)
-
-        if deviations <= tolerance:
+        # Check if the current window matches the ideal sequence
+        if compressed_states[i:i + seq_len] == ideal_sequence:
             rep_count += 1
-            i += seq_len  # Jump forward to avoid overlapping matches
+            # Move only one step forward to allow overlap detection
+            i += 1
         else:
-            i += 1  # Move one step forward to check the next window
+            i += 1
 
     return rep_count
 
-
-    
 
 def create_annotated_video(video_path, predicted_states, rep_count, output_path="annotated_pushup.mp4"):
     """
@@ -440,3 +407,33 @@ def create_annotated_video(video_path, predicted_states, rep_count, output_path=
     print(f"Annotated video saved to {output_path}")
 
 
+
+def process_video_with_model(video_path, model_path, ideal_sequence=[2, 1, 0, 1, 2], window_size=5):
+    model = load_model(model_path)
+
+    # Extract pose features from the video
+    angles, distances, landmarks_3d = ph.extract_pose_features(video_path)
+
+    # Scale features
+    scaler = StandardScaler()
+    combined_features = scaler.fit_transform(
+        np.hstack([angles, distances, landmarks_3d])
+    )
+
+    # Reshape for model input
+    video_input = combined_features.reshape(
+        -1, 1, len(ph.angle_columns + ph.distance_columns + ph.landmark_columns_3d)
+    )
+
+    # Predict states
+    probabilities = model.predict(video_input)
+    predicted_states = np.argmax(probabilities, axis=1)
+
+    # Count repetitions
+    repetitions = ph.count_reps_robust(
+        states=predicted_states,
+        ideal_sequence=ideal_sequence,
+        window_size=window_size,
+    )
+
+    return predicted_states, repetitions
