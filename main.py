@@ -21,319 +21,12 @@ tf.config.run_functions_eagerly(True)
 import cv2
 import mediapipe as mp
 
-def calculate_angle(p1, p2, p3):
-    """Calculate angle at point p2 given 3 points."""
-    v1 = np.array(p1) - np.array(p2)  # Vector from p2 to p1
-    v2 = np.array(p3) - np.array(p2)  # Vector from p2 to p3
+import pushup_helper_methods as ph
 
-    # Check if either of the vectors is zero-length
-    if np.linalg.norm(v1) == 0 or np.linalg.norm(v2) == 0:
-        return float('nan')  # Return NaN if division by zero is possible
-
-    cosine_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))  # Cosine of the angle
-
-    # Ensure the cosine value is within the valid range for arccos
-    cosine_angle = np.clip(cosine_angle, -1.0, 1.0)
-    angle = np.arccos(cosine_angle)  # Compute angle in radians
-    return np.degrees(angle)  # Convert angle from radians to degrees
-
-def calculate_distance(p1, p2):
-    """Calculate Euclidean distance between two points."""
-    return np.linalg.norm(np.array(p1) - np.array(p2))
-
-
-def extract_landmarks(landmarks):
-    """Extract all 3D landmarks into a flat array."""
-    landmark_array = []
-    for i in range(33):  # Total 33 landmarks
-        landmark_array.extend([landmarks[i].x, landmarks[i].y, landmarks[i].z])
-    return landmark_array
-
-def extract_pose_features(video_path):
-    mp_pose = mp.solutions.pose
-    pose = mp_pose.Pose()
-    cap = cv2.VideoCapture(video_path)
-
-    angles = []
-    distances = [] 
-    landmarks_3d = []
-
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(frame_rgb)
-
-        if results.pose_landmarks:
-            landmarks = results.pose_landmarks.landmark
-
-            landmark_features = extract_landmarks(landmarks)
-            landmarks_3d.append(landmark_features)
-
-            # Extract coordinates for each landmark
-            landmarks_dict = {}
-            for i in range(33):  # 33 pose landmarks
-                landmarks_dict[i] = {
-                    'x': landmarks[i].x,
-                    'y': landmarks[i].y,
-                    'z': landmarks[i].z
-                }
-            
-            # Calculate the angles
-            left_elbow_angle = calculate_angle(
-                (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
-                (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z']),
-                (landmarks_dict[15]['x'], landmarks_dict[15]['y'], landmarks_dict[15]['z'])
-            )
-
-            right_elbow_angle = calculate_angle(
-                (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
-                (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z']),
-                (landmarks_dict[16]['x'], landmarks_dict[16]['y'], landmarks_dict[16]['z'])
-            )
-
-            left_shoulder_angle = calculate_angle(
-                (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z']),
-                (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
-                (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z'])  # Spine/torso
-            )
-
-            right_shoulder_angle = calculate_angle(
-                (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z']),
-                (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
-                (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z'])  # Spine/torso
-            )
-
-            hip_spine_angle = calculate_angle(
-                (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
-                (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),
-                (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z'])
-            )
-
-            left_knee_angle = calculate_angle(
-                (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
-                (landmarks_dict[25]['x'], landmarks_dict[25]['y'], landmarks_dict[25]['z']),
-                (landmarks_dict[27]['x'], landmarks_dict[27]['y'], landmarks_dict[27]['z'])
-            )
-
-            right_knee_angle = calculate_angle(
-                (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z']),
-                (landmarks_dict[26]['x'], landmarks_dict[26]['y'], landmarks_dict[26]['z']),
-                (landmarks_dict[28]['x'], landmarks_dict[28]['y'], landmarks_dict[28]['z'])
-            )
-
-            spine_alignment = calculate_angle(
-                (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),
-                (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
-                (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z'])
-            )
-
-            neck_coords = (
-                (landmarks_dict[11]['x'] + landmarks_dict[12]['x']) / 2,
-                (landmarks_dict[11]['y'] + landmarks_dict[12]['y']) / 2,
-                (landmarks_dict[11]['z'] + landmarks_dict[12]['z']) / 2
-            )
-
-            head_neck_spine_angle = calculate_angle(
-                neck_coords,  # Midpoint of neck
-                (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),  # Head (nose)
-                (landmarks_dict[1]['x'], landmarks_dict[1]['y'], landmarks_dict[1]['z'])   # Spine/shoulder center
-            )
-
-            angles.append([
-                left_elbow_angle, right_elbow_angle, left_shoulder_angle, right_shoulder_angle,
-                hip_spine_angle, left_knee_angle, right_knee_angle, spine_alignment, head_neck_spine_angle
-            ])
-
-            # Calculate the distances (normalized by shoulder width)
-            shoulder_width = calculate_distance(
-                (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
-                (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z'])
-            )
-            
-            distances.append([
-                calculate_distance(
-                    (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z']),
-                    (landmarks_dict[15]['x'], landmarks_dict[15]['y'], landmarks_dict[15]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z']),
-                    (landmarks_dict[16]['x'], landmarks_dict[16]['y'], landmarks_dict[16]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
-                    (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
-                    (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
-                    (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
-                    (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),
-                    (landmarks_dict[1]['x'], landmarks_dict[1]['y'], landmarks_dict[1]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
-                    (landmarks_dict[25]['x'], landmarks_dict[25]['y'], landmarks_dict[25]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z']),
-                    (landmarks_dict[26]['x'], landmarks_dict[26]['y'], landmarks_dict[26]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[25]['x'], landmarks_dict[25]['y'], landmarks_dict[25]['z']),
-                    (landmarks_dict[27]['x'], landmarks_dict[27]['y'], landmarks_dict[27]['z'])
-                ) / shoulder_width,
-                
-                calculate_distance(
-                    (landmarks_dict[26]['x'], landmarks_dict[26]['y'], landmarks_dict[26]['z']),
-                    (landmarks_dict[28]['x'], landmarks_dict[28]['y'], landmarks_dict[28]['z'])
-                ) / shoulder_width,
-            ])
-            
-    cap.release()
-
-    angles = np.nan_to_num(np.array(angles), nan=0.0)
-    distances = np.nan_to_num(np.array(distances), nan=0.0)
-
-    return angles, distances, landmarks_3d
-
-
-
-def euclidean_distance(landmarks, joint1, joint2):
-    # Extract the coordinates of the two joints
-    x1, y1, z1 = landmarks[joint1.value].x, landmarks[joint1.value].y, landmarks[joint1.value].z
-    x2, y2, z2 = landmarks[joint2.value].x, landmarks[joint2.value].y, landmarks[joint2.value].z
-
-    # Compute the Euclidean distance between the two joints
-    return np.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
-
-
-def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2]):
-    """
-    Count repetitions based on robust state transition tracking with compression and overlapping matching.
-
-    Args:
-    states (list): List of detected states in the video (e.g., [2, 1, 0, ...]).
-    ideal_sequence (list): The state sequence that defines one rep.
-
-    Returns:
-    int: Number of repetitions.
-    """
-    rep_count = 0
-    seq_len = len(ideal_sequence)
-
-    print(f"Predicted States: {states}")
-
-    # Step 1: Compress consecutive duplicates
-    compressed_states = [k for idx, k in enumerate(states) if idx == 0 or k != states[idx - 1]]
-    print(f"Compressed States: {compressed_states}")
-
-    smoothed_states = moving_average_smoothing(compressed_states, window_size=5) #not currently using
-    print(f"Smoothed States: {smoothed_states}")
-
-
-    # Step 2: Sliding window with overlapping sequence detection
-    i = 0
-    while i <= len(compressed_states) - seq_len:
-        # Check if the current window matches the ideal sequence
-        if compressed_states[i:i + seq_len] == ideal_sequence:
-            rep_count += 1
-            # Move only one step forward to allow overlap detection
-            i += 1
-        else:
-            i += 1
-
-    return rep_count
-
-
-def create_annotated_video(video_path, predicted_states, rep_count, output_path="annotated_pushup.mp4"):
-    """
-    Create a video with state and repetition counter overlayed on each frame.
-
-    Args:
-        video_path (str): Path to the original video.
-        predicted_states (list): List of predicted states for each frame.
-        rep_count (int): Total repetition count.
-        output_path (str): Path to save the annotated video.
-    """
-    cap = cv2.VideoCapture(video_path)
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for .mp4 file
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
-    out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
-    frame_idx = 0
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret or frame_idx >= len(predicted_states):
-            break
-        
-        # Annotate the frame
-        state_text = f"State: {predicted_states[frame_idx]}"
-        rep_text = f"Reps: {rep_count}"
-        
-        # Draw the text on the frame
-        cv2.putText(frame, state_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
-                    1, (0, 255, 0), 2, cv2.LINE_AA)
-        cv2.putText(frame, rep_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 
-                    1, (0, 0, 255), 2, cv2.LINE_AA)
-        
-        out.write(frame)
-        frame_idx += 1
-
-    cap.release()
-    out.release()
-    print(f"Annotated video saved to {output_path}")
-
-
-def moving_average_smoothing(labels, window_size=5):
-    """
-    Apply moving average smoothing on frame labels.
-    
-    Args:
-        labels (list or np.array): Array of state labels (0, 1, 2).
-        window_size (int): Number of frames for the moving average window.
-
-    Returns:
-        np.array: Smoothed labels.
-    """
-    # Convert labels to a Pandas Series for easy handling
-    labels_series = pd.Series(labels)
-    
-    # Apply a rolling window and take the mean, then round to nearest integer
-    smoothed = labels_series.rolling(window=window_size, center=True).mean().round()
-    
-    # Fill the NaN values (from edges of the rolling window)
-    smoothed = smoothed.fillna(method='bfill').fillna(method='ffill')
-    
-    return smoothed.to_numpy().astype(int)
 
 # Load data
-csv_file = 'pushup-keypoints/pushup-keypoints-test.csv'
-# csv_file = 'all_videos_with_angles_and_distances_new.csv'
+# csv_file = 'pushup-keypoints/pushup-keypoints-test.csv'
+csv_file = 'pushup-keypoints/pushup-keypoints-test-comma-delimited-deletedrows.csv'
 df = pd.read_csv(csv_file)
 
 state_counts = df['state'].value_counts()
@@ -347,27 +40,13 @@ state_counts_per_camera = df.groupby(['camera_side', 'state']).size().unstack(fi
 
 print(state_counts_per_camera)
 
-angle_columns = [
-    'left_elbow_angle', 'right_elbow_angle', 'left_shoulder_angle', 
-    'right_shoulder_angle', 'hip_spine_angle', 'left_knee_angle', 
-    'right_knee_angle', 'spine_alignment', 'head_neck_spine_angle'
-]
 
-distance_columns = [
-    'elbow_wrist_left', 'elbow_wrist_right',
-    'shoulder_elbow_left', 'shoulder_elbow_right',
-    'shoulder_hip_left', 'shoulder_hip_right',
-    'spine_neck', 'hip_knee_left', 'hip_knee_right',
-    'knee_ankle_left', 'knee_ankle_right'
-]
+from sklearn.preprocessing import StandardScaler
 
-landmark_columns_3d = [
-        f'landmark_{i}_{axis}' for i in range(33) for axis in ['x', 'y', 'z']
-]
+scaler = StandardScaler()
+X = scaler.fit_transform(df[ph.angle_columns + ph.distance_columns + ph.landmark_columns_3d])
 
-
-# Update X with normalized distances and other features
-X = df[angle_columns + distance_columns + landmark_columns_3d].values
+# X = df[angle_columns + distance_columns + landmark_columns_3d].values
 y = df['state'].values
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -404,28 +83,14 @@ print(f"Class weights: {class_weights}")
 
 
 model = Sequential([
-    Bidirectional(LSTM(units=128, return_sequences=False), input_shape=(1, len(angle_columns + distance_columns + landmark_columns_3d)),), 
+    Bidirectional(LSTM(units=128, return_sequences=False), input_shape=(1, len(ph.angle_columns + ph.distance_columns + ph.landmark_columns_3d)),), 
     Dropout(rate=0.1),
     Dense(16, activation='relu', kernel_regularizer=l2(0.01)),
     Dense(3, activation='softmax')
 ])
 
-# model = Sequential([
-#     LSTM(128, return_sequences=True, input_shape=(1, len(angle_columns + distance_columns + landmark_columns_3d))),
-#     Dropout(rate=0.1),
-#     LSTM(64, return_sequences=False),
-#     Dense(32, activation='relu', kernel_regularizer=l2(0.001)),  # Reduced regularization
-#     Dense(3, activation='softmax')
-# ])
 
-
-
-# optimizer = tf.keras.optimizers.Nadam(learning_rate=0.0001) # 0.84
-
-# optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.0001) # 0.81
-# optimizer = tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9) # 0.8
-# optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) # 0.83
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) # 0.88
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) 
 
 # Compile the model
 model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy', metrics=['accuracy'])
@@ -476,7 +141,7 @@ plt.show()
 
 
 # # Save the trained model
-# model.save('pushup_model_biLSTM.h5')  # Saves the model to an H5 file
+model.save('pushup_model_latestBiLSTMtestwithdeletedrows.h5')  # Saves the model to an H5 file
 
 
 # from tensorflow.keras.models import load_model
