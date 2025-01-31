@@ -25,7 +25,7 @@ def process_video_with_model(video_path, model_path, ideal_sequence=[2, 1, 0, 1,
     import numpy as np
     import pushup_helper_methods as ph  # Your custom helper module
 
-     model = load_model(model_path)
+    model = load_model(model_path)
 
     # Extract pose features from the video
     angles, distances, landmarks_3d = ph.extract_pose_features(video_path)

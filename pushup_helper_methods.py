@@ -244,6 +244,179 @@ def extract_pose_features(video_path):
 
 
 
+
+
+
+
+
+
+
+def extract_pose_features_single_frame(frame):
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose()
+
+    angles = []
+    distances = []
+    landmarks_3d = []
+
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = pose.process(frame_rgb)
+
+    if results.pose_landmarks:
+        landmarks = results.pose_landmarks.landmark
+
+        landmark_features = extract_landmarks(landmarks)
+        landmarks_3d.append(landmark_features)
+
+        # Extract coordinates for each landmark
+        landmarks_dict = {}
+        for i in range(33):  # 33 pose landmarks
+            landmarks_dict[i] = {
+                'x': landmarks[i].x,
+                'y': landmarks[i].y,
+                'z': landmarks[i].z
+            }
+
+        # Calculate the angles
+        left_elbow_angle = calculate_angle(
+            (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
+            (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z']),
+            (landmarks_dict[15]['x'], landmarks_dict[15]['y'], landmarks_dict[15]['z'])
+        )
+
+        right_elbow_angle = calculate_angle(
+            (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
+            (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z']),
+            (landmarks_dict[16]['x'], landmarks_dict[16]['y'], landmarks_dict[16]['z'])
+        )
+
+        left_shoulder_angle = calculate_angle(
+            (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z']),
+            (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
+            (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z'])  # Spine/torso
+        )
+
+        right_shoulder_angle = calculate_angle(
+            (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z']),
+            (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
+            (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z'])  # Spine/torso
+        )
+
+        hip_spine_angle = calculate_angle(
+            (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
+            (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),
+            (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z'])
+        )
+
+        left_knee_angle = calculate_angle(
+            (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
+            (landmarks_dict[25]['x'], landmarks_dict[25]['y'], landmarks_dict[25]['z']),
+            (landmarks_dict[27]['x'], landmarks_dict[27]['y'], landmarks_dict[27]['z'])
+        )
+
+        right_knee_angle = calculate_angle(
+            (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z']),
+            (landmarks_dict[26]['x'], landmarks_dict[26]['y'], landmarks_dict[26]['z']),
+            (landmarks_dict[28]['x'], landmarks_dict[28]['y'], landmarks_dict[28]['z'])
+        )
+
+        spine_alignment = calculate_angle(
+            (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),
+            (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
+            (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z'])
+        )
+
+        neck_coords = (
+            (landmarks_dict[11]['x'] + landmarks_dict[12]['x']) / 2,
+            (landmarks_dict[11]['y'] + landmarks_dict[12]['y']) / 2,
+            (landmarks_dict[11]['z'] + landmarks_dict[12]['z']) / 2
+        )
+
+        head_neck_spine_angle = calculate_angle(
+            neck_coords,  # Midpoint of neck
+            (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),  # Head (nose)
+            (landmarks_dict[1]['x'], landmarks_dict[1]['y'], landmarks_dict[1]['z'])   # Spine/shoulder center
+        )
+
+        angles.append([
+            left_elbow_angle, right_elbow_angle, left_shoulder_angle, right_shoulder_angle,
+            hip_spine_angle, left_knee_angle, right_knee_angle, spine_alignment, head_neck_spine_angle
+        ])
+
+        # Calculate the distances (normalized by shoulder width)
+        shoulder_width = calculate_distance(
+            (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
+            (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z'])
+        )
+
+        distances.append([
+            calculate_distance(
+                (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z']),
+                (landmarks_dict[15]['x'], landmarks_dict[15]['y'], landmarks_dict[15]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z']),
+                (landmarks_dict[16]['x'], landmarks_dict[16]['y'], landmarks_dict[16]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
+                (landmarks_dict[13]['x'], landmarks_dict[13]['y'], landmarks_dict[13]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
+                (landmarks_dict[14]['x'], landmarks_dict[14]['y'], landmarks_dict[14]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[11]['x'], landmarks_dict[11]['y'], landmarks_dict[11]['z']),
+                (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[12]['x'], landmarks_dict[12]['y'], landmarks_dict[12]['z']),
+                (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[0]['x'], landmarks_dict[0]['y'], landmarks_dict[0]['z']),
+                (landmarks_dict[1]['x'], landmarks_dict[1]['y'], landmarks_dict[1]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[23]['x'], landmarks_dict[23]['y'], landmarks_dict[23]['z']),
+                (landmarks_dict[25]['x'], landmarks_dict[25]['y'], landmarks_dict[25]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[24]['x'], landmarks_dict[24]['y'], landmarks_dict[24]['z']),
+                (landmarks_dict[26]['x'], landmarks_dict[26]['y'], landmarks_dict[26]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[25]['x'], landmarks_dict[25]['y'], landmarks_dict[25]['z']),
+                (landmarks_dict[27]['x'], landmarks_dict[27]['y'], landmarks_dict[27]['z'])
+            ) / shoulder_width,
+            
+            calculate_distance(
+                (landmarks_dict[26]['x'], landmarks_dict[26]['y'], landmarks_dict[26]['z']),
+                (landmarks_dict[28]['x'], landmarks_dict[28]['y'], landmarks_dict[28]['z'])
+            ) / shoulder_width,
+        ])
+
+    # Convert to numpy arrays and handle NaN values
+    angles = np.nan_to_num(np.array(angles), nan=0.0)
+    distances = np.nan_to_num(np.array(distances), nan=0.0)
+
+    return angles, distances, landmarks_3d
+
+
+
+
+
+
 def euclidean_distance(landmarks, joint1, joint2):
     # Extract the coordinates of the two joints
     x1, y1, z1 = landmarks[joint1.value].x, landmarks[joint1.value].y, landmarks[joint1.value].z
@@ -328,17 +501,57 @@ def compress_states(states):
     return compressed_states
 
 
+def getRepsAndSmoothedStates(states, ideal_sequence=[2, 1, 0, 1, 2], window_size=5):
+    seq_len = len(ideal_sequence)
+    rep_count = 0
+
+    # Smooth the states
+    smoothed_states = smooth_states(states, window_size=window_size)
+
+    # Compress the smoothed states
+    compressed_states = compress_states(smoothed_states)
+
+    # Initialize a list to hold the rep count for each frame
+    reps_by_frame = [0] * len(states)
+
+    # Create a mapping from each frame index to compressed states
+    frame_to_compressed_mapping = []
+    compressed_index = 0
+    for i, state in enumerate(smoothed_states):
+        frame_to_compressed_mapping.append(compressed_index)
+        if compressed_index < len(compressed_states) and compressed_states[compressed_index] == state:
+            compressed_index += 1
+
+    # Sliding window to count reps
+    i = 0
+    while i <= len(compressed_states) - seq_len:
+        # Check if the current window matches the ideal sequence
+        if compressed_states[i:i + seq_len] == ideal_sequence:
+            rep_count += 1
+
+            # Assign the current rep count to corresponding frames
+            for frame_index in range(len(frame_to_compressed_mapping)):
+                if i <= frame_to_compressed_mapping[frame_index] < i + seq_len:
+                    reps_by_frame[frame_index] = rep_count
+
+            # Move forward to allow overlap detection
+            i += 1
+        else:
+            i += 1
+
+    # Fill in any gaps in reps_by_frame by carrying forward the last non-zero rep count
+    last_rep = 0
+    for idx in range(len(reps_by_frame)):
+        if reps_by_frame[idx] == 0:
+            reps_by_frame[idx] = last_rep
+        else:
+            last_rep = reps_by_frame[idx]
+
+    # Return both smoothed states and the corresponding reps for each frame
+    return smoothed_states, reps_by_frame
+
+
 def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2],  window_size=5):
-    """
-    Count repetitions based on robust state transition tracking with compression and overlapping matching.
-
-    Args:
-    states (list): List of detected states in the video (e.g., [2, 1, 0, ...]).
-    ideal_sequence (list): The state sequence that defines one rep.
-
-    Returns:
-    int: Number of repetitions.
-    """
     rep_count = 0
     seq_len = len(ideal_sequence)
 
@@ -361,6 +574,8 @@ def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2],  window_size=5):
             i += 1
         else:
             i += 1
+        # ask gpt to change rep_count to rep_by_frame or smth, which stores the current rep number for each frame. Can then use this and smoothed
+        # states to overlay on video. 
 
     return rep_count
 
@@ -430,10 +645,10 @@ def process_video_with_model(video_path, model_path, ideal_sequence=[2, 1, 0, 1,
     predicted_states = np.argmax(probabilities, axis=1)
 
     # Count repetitions
-    repetitions = ph.count_reps_robust(
+    smoothed_states, repetitions = ph.getRepsAndSmoothedStates(
         states=predicted_states,
         ideal_sequence=ideal_sequence,
         window_size=window_size,
     )
 
-    return predicted_states, repetitions
+    return smoothed_states, repetitions
