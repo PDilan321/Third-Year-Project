@@ -59,9 +59,9 @@ import json
 import csv
 
 # Directory containing JSON prediction files
-predictions_dir = 'multirepoutput/predictions'
+predictions_dir = 'mmpose-pushup-keypoints-2d'
 # predictions_dir = 'multipleoutput/predictions'
-csv_file_path = 'push-up-reps-keypoints.csv'
+csv_file_path = 'mmpose-pushup-keypoints-2d.csv'
 
 # Keypoints list
 keypoints_list = [
@@ -82,24 +82,13 @@ with open(csv_file_path, 'a', newline='') as csv_file:
     if not file_exists:
         header = ['video_id', 'frame_id']
         for keypoint in keypoints_list:
-            header.extend([f'{keypoint}_x', f'{keypoint}_y', f'{keypoint}_z'])  # Proper names for keypoints
-        header.append('reps')  # Add the label column
+            header.extend([f'{keypoint}_x', f'{keypoint}_y'])  # Proper names for keypoints
         csv_writer.writerow(header)
     
     # Iterate over all files in the predictions directory
     for json_file_name in os.listdir(predictions_dir):
         if not json_file_name.endswith('.json'):
             continue  # Skip non-JSON files
-        
-
-        reps= 1
-        # # Determine the label based on the filename
-        # if "good_rep" in json_file_name:
-        #     label = 1  # Good rep
-        # elif "bad_rep" in json_file_name:
-        #     label = 0  # Bad rep
-        # else:
-        #     continue  # Skip files that do not match naming convention
         
         # Load the JSON file
         json_path = os.path.join(predictions_dir, json_file_name)
@@ -119,9 +108,6 @@ with open(csv_file_path, 'a', newline='') as csv_file:
                 # Add keypoint coordinates for the first instance
                 for keypoint, coords in zip(keypoints_list, instance['keypoints']):
                     row.extend(coords)  # Append x, y, z for each keypoint
-            
-            # Append the label to the row
-            row.append(reps)
             
             # Write the row to the CSV
             csv_writer.writerow(row)

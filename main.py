@@ -9,6 +9,8 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import Bidirectional
 from tensorflow.keras.regularizers import l2
 from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.preprocessing import StandardScaler
+
 
 
 from sklearn.decomposition import PCA
@@ -23,54 +25,48 @@ import mediapipe as mp
 
 import pushup_helper_methods as ph
 
+import numpy as np
 
-# Load data
-# csv_file = 'pushup-keypoints/pushup-keypoints-test.csv'
-csv_file = 'pushup-keypoints/pushup-keypoints-test-comma-delimited-deletedrows.csv'
+# csv_file = '2D/rtm-pose/rtm-pose-pushup-dataset.csv'
+# csv_file = '3D/mediapipe/mediapipe-pushup-dataset-balanced.csv'
+csv_file = '3D/mmpose-3d/aligned-mmpose-dataset.csv'
 df = pd.read_csv(csv_file)
+df.dropna(inplace=True)
 
 state_counts = df['state'].value_counts()
 print(state_counts)
 
-# Extract the camera side (front, left, right) from video_id
 df['camera_side'] = df['video_id'].str.extract(r'(front_facing|left_facing|right_facing)')
-
-# Group by camera_side and state, then count occurrences
 state_counts_per_camera = df.groupby(['camera_side', 'state']).size().unstack(fill_value=0)
-
 print(state_counts_per_camera)
 
-
-from sklearn.preprocessing import StandardScaler
-
 scaler = StandardScaler()
-X = scaler.fit_transform(df[ph.angle_columns + ph.distance_columns + ph.landmark_columns_3d])
+X = scaler.fit_transform(df[ph.mmpose_columns])
 
-# X = df[angle_columns + distance_columns + landmark_columns_3d].values
+X = df[ph.mmpose_columns].values 
+# X = df[ph.angle_columns + ph.distance_columns].values
+
 y = df['state'].values
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Reshape for BiLSTM (samples, timesteps, features)
 X_train = X_train.reshape(-1, 1, X_train.shape[1])
 X_test = X_test.reshape(-1, 1, X_test.shape[1])
 
 
-
-# Flatten the data from 3D to 2D
 X_train_flat = X_train.reshape(X_train.shape[0], -1)
-
-# Apply t-SNE
 tsne = TSNE(n_components=2, perplexity=30, random_state=42)
 X_embedded = tsne.fit_transform(X_train_flat)
-
-# Plotting the results
 plt.figure(figsize=(10, 7))
-for state in range(3):  # Assuming 3 classes (up, mid, down)
+for state in range(3):
     plt.scatter(X_embedded[y_train == state, 0], X_embedded[y_train == state, 1], label=f'State {state}')
 plt.legend()
 plt.title("t-SNE Visualization of Pushup States")
 plt.show()
+
+
+
+
 
 
 
@@ -83,14 +79,23 @@ print(f"Class weights: {class_weights}")
 
 
 model = Sequential([
-    Bidirectional(LSTM(units=128, return_sequences=False), input_shape=(1, len(ph.angle_columns + ph.distance_columns + ph.landmark_columns_3d)),), 
+    Bidirectional(LSTM(units=128, return_sequences=False), input_shape=(1, len(ph.mmpose_columns)),),
     Dropout(rate=0.1),
     Dense(16, activation='relu', kernel_regularizer=l2(0.01)),
     Dense(3, activation='softmax')
 ])
 
+# model = Sequential([
+#     LSTM(units=128, return_sequences=False, input_shape=(1, len(ph.mmpose_columns))), 
+#     Dropout(rate=0.1),
+#     Dense(16, activation='relu', kernel_regularizer=l2(0.01)),
+#     Dense(3, activation='softmax')
+# ])
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) 
+
+# optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) 
+optimizer = tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.9)
+
 
 # Compile the model
 model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy', metrics=['accuracy'])
@@ -139,9 +144,20 @@ plt.ylabel('Loss')
 plt.legend()
 plt.show()
 
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+
+cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(6,6))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=[0, 1, 2], yticklabels=[0, 1, 2])
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix')
+plt.show()
+
 
 # # Save the trained model
-model.save('pushup_model_latestBiLSTMtestwithdeletedrows.h5')  # Saves the model to an H5 file
+# model.save('rtm-pose-BiLSTM.h5')  # Saves the model to an H5 file
 
 
 # from tensorflow.keras.models import load_model

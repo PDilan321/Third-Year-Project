@@ -1,11 +1,11 @@
 import os
 
 # Directory containing your videos
-video_directory = r"C:\Users\Dilan Patel\Desktop\3rd Year Project\data\push-up-multi-reps\good-reps"
+video_directory = r"C:\Users\Dilan Patel\Desktop\3rd Year Project\Third-Year-Project\data\pull-ups"
 
 
 # Prefix for the renamed files
-prefix = "video"
+prefix = "pull_up"
 
 # File extension of your video files
 file_extension = ".mp4"  # Change this if your files have a different extension (e.g., ".mov")

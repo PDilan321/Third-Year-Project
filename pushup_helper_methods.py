@@ -30,6 +30,12 @@ angle_columns = [
     'right_knee_angle', 'spine_alignment', 'head_neck_spine_angle'
 ]
 
+mmpose_angle_columns = [
+    'left_elbow_angle', 'right_elbow_angle', 'left_shoulder_angle', 
+    'right_shoulder_angle', 'hip_spine_angle', 'left_knee_angle', 
+    'right_knee_angle',
+]
+
 distance_columns = [
     'elbow_wrist_left', 'elbow_wrist_right',
     'shoulder_elbow_left', 'shoulder_elbow_right',
@@ -38,10 +44,62 @@ distance_columns = [
     'knee_ankle_left', 'knee_ankle_right'
 ]
 
+mmpose_distance_columns = [
+    'elbow_wrist_left', 'elbow_wrist_right',
+    'shoulder_elbow_left', 'shoulder_elbow_right',
+    'shoulder_hip_left', 'shoulder_hip_right',
+    'hip_knee_left', 'hip_knee_right',
+    'knee_ankle_left', 'knee_ankle_right'
+]
+
 landmark_columns_3d = [
         f'landmark_{i}_{axis}' for i in range(33) for axis in ['x', 'y', 'z']
 ]
 
+mmpose_landmark_columns = [
+    "Pelvis_x", "Pelvis_y", "Pelvis_z",
+    "RHip_x", "RHip_y", "RHip_z",
+    "RKnee_x", "RKnee_y", "RKnee_z",
+    "RAnkle_x", "RAnkle_y", "RAnkle_z",
+    "LHip_x", "LHip_y", "LHip_z",
+    "LKnee_x", "LKnee_y", "LKnee_z",
+    "LAnkle_x", "LAnkle_y", "LAnkle_z",
+    "Spine1_x", "Spine1_y", "Spine1_z",
+    "Neck_x", "Neck_y", "Neck_z",
+    "Head_x", "Head_y", "Head_z",
+    "Site_x", "Site_y", "Site_z",
+    "LShoulder_x", "LShoulder_y", "LShoulder_z",
+    "LElbow_x", "LElbow_y", "LElbow_z",
+    "LWrist_x", "LWrist_y", "LWrist_z",
+    "RShoulder_x", "RShoulder_y", "RShoulder_z",
+    "RElbow_x", "RElbow_y", "RElbow_z",
+    "RWrist_x", "RWrist_y", "RWrist_z"
+]
+
+mmpose_2d_landmark_columns = [
+    "Pelvis_x", "Pelvis_y",
+    "RHip_x", "RHip_y",
+    "RKnee_x", "RKnee_y",
+    "RAnkle_x", "RAnkle_y",
+    "LHip_x", "LHip_y",
+    "LKnee_x", "LKnee_y", 
+    "LAnkle_x", "LAnkle_y", 
+    "Spine1_x", "Spine1_y", 
+    "Neck_x", "Neck_y", 
+    "Head_x", "Head_y", 
+    "Site_x", "Site_y",
+    "LShoulder_x", "LShoulder_y", 
+    "LElbow_x", "LElbow_y", 
+    "LWrist_x", "LWrist_y",
+    "RShoulder_x", "RShoulder_y",
+    "RElbow_x", "RElbow_y", 
+    "RWrist_x", "RWrist_y", 
+]
+
+mmpose_columns = mmpose_angle_columns + mmpose_distance_columns + mmpose_distance_columns
+mmpose_2d_columns = angle_columns + distance_columns + mmpose_2d_landmark_columns
+
+mediapipe_columns = angle_columns + distance_columns + landmark_columns_3d
 
 def calculate_angle(p1, p2, p3):
     """Calculate angle at point p2 given 3 points."""
@@ -501,54 +559,58 @@ def compress_states(states):
     return compressed_states
 
 
-def getRepsAndSmoothedStates(states, ideal_sequence=[2, 1, 0, 1, 2], window_size=5):
-    seq_len = len(ideal_sequence)
-    rep_count = 0
-
-    # Smooth the states
-    smoothed_states = smooth_states(states, window_size=window_size)
-
-    # Compress the smoothed states
-    compressed_states = compress_states(smoothed_states)
-
-    # Initialize a list to hold the rep count for each frame
-    reps_by_frame = [0] * len(states)
-
-    # Create a mapping from each frame index to compressed states
-    frame_to_compressed_mapping = []
+def get_state_mapping(smoothed_states, compressed_states):
+    mapping = []
     compressed_index = 0
-    for i, state in enumerate(smoothed_states):
-        frame_to_compressed_mapping.append(compressed_index)
-        if compressed_index < len(compressed_states) and compressed_states[compressed_index] == state:
+    for i in range(len(smoothed_states)):
+        # If the current state is different from the previous one or it's the first element,
+        # it should correspond to the next compressed state element
+        if i == 0 or smoothed_states[i] != smoothed_states[i - 1]:
+            mapping.append((compressed_index, i))  # Store the compressed index and smoothed index
             compressed_index += 1
+            if compressed_index >= len(compressed_states):  # Once we run out of compressed states, stop
+                break
+    return mapping
 
-    # Sliding window to count reps
+
+def getRepsAndSmoothedStates(states, ideal_sequence=[2, 1, 0, 1, 2], window_size=5):
+    rep_count = 0
+    seq_len = len(ideal_sequence)
+
+    print(f"Predicted States: {states}")
+
+    smoothed_states = smooth_states(states, window_size=window_size)
+    print(f"Smoothed States: {smoothed_states}")
+
+    # Step 1: Compress consecutive duplicates
+    compressed_states = compress_states(smoothed_states)
+    print(f"Compressed States: {compressed_states}")
+
+    state_mappings = get_state_mapping(smoothed_states, compressed_states)
+    print(f"State Mappings: {state_mappings}")
+
+    # Step 2: Sliding window with overlapping sequence detection
     i = 0
+    reps_by_frame = [0] * len(smoothed_states)  # Initialize all frames with 0
     while i <= len(compressed_states) - seq_len:
         # Check if the current window matches the ideal sequence
         if compressed_states[i:i + seq_len] == ideal_sequence:
             rep_count += 1
 
-            # Assign the current rep count to corresponding frames
-            for frame_index in range(len(frame_to_compressed_mapping)):
-                if i <= frame_to_compressed_mapping[frame_index] < i + seq_len:
-                    reps_by_frame[frame_index] = rep_count
+            smoothed_state_index = state_mappings[i+seq_len - 1][1]
+            for j in range(smoothed_state_index, len(smoothed_states)):
+                reps_by_frame[j] = rep_count
 
-            # Move forward to allow overlap detection
-            i += 1
-        else:
-            i += 1
+        i += 1  # Move one step forward to allow overlap detection
 
-    # Fill in any gaps in reps_by_frame by carrying forward the last non-zero rep count
-    last_rep = 0
-    for idx in range(len(reps_by_frame)):
-        if reps_by_frame[idx] == 0:
-            reps_by_frame[idx] = last_rep
-        else:
-            last_rep = reps_by_frame[idx]
-
-    # Return both smoothed states and the corresponding reps for each frame
     return smoothed_states, reps_by_frame
+
+
+
+
+
+
+
 
 
 def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2],  window_size=5):
@@ -574,8 +636,6 @@ def count_reps_robust(states, ideal_sequence=[2, 1, 0, 1, 2],  window_size=5):
             i += 1
         else:
             i += 1
-        # ask gpt to change rep_count to rep_by_frame or smth, which stores the current rep number for each frame. Can then use this and smoothed
-        # states to overlay on video. 
 
     return rep_count
 
@@ -642,6 +702,7 @@ def process_video_with_model(video_path, model_path, ideal_sequence=[2, 1, 0, 1,
 
     # Predict states
     probabilities = model.predict(video_input)
+    print(probabilities)
     predicted_states = np.argmax(probabilities, axis=1)
 
     # Count repetitions
@@ -651,4 +712,4 @@ def process_video_with_model(video_path, model_path, ideal_sequence=[2, 1, 0, 1,
         window_size=window_size,
     )
 
-    return smoothed_states, repetitions
+    return smoothed_states, repetitions, angles, landmarks_3d
